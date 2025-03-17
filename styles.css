@@ -1,0 +1,271 @@
+:root {
+  --primary-color: #2a2d64;
+  --secondary-color: #4d5bf9;
+  --background-color: #f5f7fa;
+  --card-background: #ffffff;
+  --text-color: #333333;
+  --success-color: #4caf50;
+  --error-color: #f44336;
+  --warning-color: #ff9800;
+  --border-color: #e0e0e0;
+  --hover-color: #f0f2f5;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+header {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: var(--error-color);
+  display: inline-block;
+}
+
+.status-dot.connected {
+  background-color: var(--success-color);
+}
+
+.main-container {
+  display: flex;
+  flex: 1;
+  padding: 1.5rem;
+  gap: 1.5rem;
+}
+
+.left-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.right-panel {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.card {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  padding: 1.5rem;
+}
+
+.card h2 {
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.5rem;
+}
+
+.status-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+}
+
+.label {
+  font-weight: 600;
+  color: #666;
+}
+
+.value {
+  font-weight: 500;
+}
+
+.sequence-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.sequence-item {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: white;
+}
+
+.sequence-item.R {
+  background-color: var(--error-color);
+}
+
+.sequence-item.G {
+  background-color: var(--success-color);
+}
+
+.sequence-item.active {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px white, 0 0 0 4px var(--secondary-color);
+}
+
+.stakes-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.75rem;
+}
+
+.stake-item {
+  padding: 0.75rem;
+  border-radius: 6px;
+  text-align: center;
+  border: 1px solid var(--border-color);
+}
+
+.stake-item.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.stake-round {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.stake-value {
+  font-size: 0.9rem;
+}
+
+.trade-history {
+  flex: 1.5;
+}
+
+.history-container {
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th, td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+th {
+  background-color: var(--hover-color);
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+tbody tr:hover {
+  background-color: var(--hover-color);
+}
+
+.chart-container {
+  height: 250px;
+  position: relative;
+}
+
+.log-container {
+  height: 300px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.85rem;
+  background-color: #f8f9fa;
+  padding: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.log-entry {
+  margin-bottom: 0.25rem;
+  padding: 0.25rem;
+  border-bottom: 1px solid #eee;
+}
+
+.log-entry.info {
+  color: #333;
+}
+
+.log-entry.warning {
+  color: var(--warning-color);
+}
+
+.log-entry.error {
+  color: var(--error-color);
+}
+
+.log-entry.success {
+  color: var(--success-color);
+}
+
+.outcome-won {
+  color: var(--success-color);
+  font-weight: bold;
+}
+
+.outcome-lost {
+  color: var(--error-color);
+  font-weight: bold;
+}
+
+.profit {
+  color: var(--success-color);
+}
+
+.loss {
+  color: var(--error-color);
+}
+
+/* Responsive design */
+@media (max-width: 1200px) {
+  .main-container {
+      flex-direction: column;
+  }
+  
+  .left-panel, .right-panel {
+      width: 100%;
+  }
+}

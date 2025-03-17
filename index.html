@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binary Options Trading Bot Visualizer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="dashboard">
+        <header>
+            <h1>Binary Options Trading Bot</h1>
+            <div class="status-indicator">
+                <span id="connection-status">Disconnected</span>
+                <span class="status-dot" id="status-dot"></span>
+            </div>
+        </header>
+
+        <div class="main-container">
+            <div class="left-panel">
+                <div class="card">
+                    <h2>Bot Status</h2>
+                    <div class="status-info">
+                        <div class="info-item">
+                            <span class="label">Market:</span>
+                            <span class="value" id="current-market">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Authorized:</span>
+                            <span class="value" id="authorized-status">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Trading:</span>
+                            <span class="value" id="trading-status">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Round:</span>
+                            <span class="value" id="current-round">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Current Stake:</span>
+                            <span class="value" id="current-stake">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Sequence</h2>
+                    <div class="sequence-display" id="sequence-display">
+                        <!-- Sequence items will be added here -->
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Stakes</h2>
+                    <div class="stakes-info" id="stakes-info">
+                        <!-- Stakes info will be added here -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="right-panel">
+                <div class="card trade-history">
+                    <h2>Trade History</h2>
+                    <div class="history-container">
+                        <table id="trade-history-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Market</th>
+                                    <th>Type</th>
+                                    <th>Stake</th>
+                                    <th>Outcome</th>
+                                    <th>Profit/Loss</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trade-history-body">
+                                <!-- Trade history rows will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Performance</h2>
+                    <div class="chart-container">
+                        <canvas id="balance-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Log</h2>
+                    <div class="log-container" id="log-container">
+                        <!-- Log entries will be added here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
