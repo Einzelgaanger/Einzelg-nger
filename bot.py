@@ -5,7 +5,6 @@ import time
 import random
 import logging
 import sys
-import asyncio
 from datetime import datetime
 
 # Set up logging
@@ -39,7 +38,7 @@ class DerivBinaryOptionsBot:
         self.active_contract = None
         
         # Trading parameters
-        self.trade_duration = 1  # 1 minutes
+        self.trade_duration = 1  # 1 minute
         self.trade_duration_unit = "m"  # minutes
         self.sequence = []  # Sequence of trades (R/G)
         self.current_trade_index = 0
@@ -47,15 +46,15 @@ class DerivBinaryOptionsBot:
         # Predefined stakes for each round
         self.stakes = [
             0.35,      # Round 1
-            0.60,     # Round 2
-            1.61,     # Round 3
-            4.34,    # Round 4
-            11.69,    # Round 5
-            31.49,   # Round 6
-            84.82,   # Round 7
-            228.47,  # Round 8
-            615.40,  # Round 9
-            1657.63  # Round 10
+            0.60,      # Round 2
+            1.61,      # Round 3
+            4.34,      # Round 4
+            11.69,     # Round 5
+            31.49,     # Round 6
+            84.82,     # Round 7
+            228.47,    # Round 8
+            615.40,    # Round 9
+            1657.63    # Round 10
         ]
         self.max_consecutive_losses = len(self.stakes)
         self.consecutive_losses = 0
@@ -63,6 +62,45 @@ class DerivBinaryOptionsBot:
         # Trading state
         self.is_trading = False
         self.waiting_for_contract_settlement = False
+        
+        # For observer pattern
+        self.observer_callbacks = {
+            'status_change': None,
+            'sequence_change': None,
+            'log': None,
+            'trade_update': None
+        }
+    
+    def set_observer_callbacks(self, callbacks):
+        """Set observer callbacks for events"""
+        self.observer_callbacks.update(callbacks)
+    
+    def notify_status_change(self):
+        """Notify about status changes"""
+        if self.observer_callbacks['status_change']:
+            self.observer_callbacks['status_change'](self)
+    
+    def notify_sequence_change(self):
+        """Notify about sequence changes"""
+        if self.observer_callbacks['sequence_change']:
+            self.observer_callbacks['sequence_change'](self)
+    
+    def notify_log(self, message, level="info"):
+        """Send log message"""
+        if self.observer_callbacks['log']:
+            self.observer_callbacks['log'](message, level)
+        logging.log(
+            logging.INFO if level == "info" else 
+            logging.ERROR if level == "error" else
+            logging.WARNING if level == "warning" else
+            logging.INFO, 
+            message
+        )
+    
+    def notify_trade_update(self, contract_data):
+        """Notify about trade updates"""
+        if self.observer_callbacks['trade_update']:
+            self.observer_callbacks['trade_update'](contract_data)
     
     def get_next_req_id(self):
         """Get the next request ID and increment counter"""
@@ -72,7 +110,7 @@ class DerivBinaryOptionsBot:
     
     def connect(self):
         """Establish WebSocket connection"""
-        logging.info("Connecting to Deriv API...")
+        self.notify_log("Connecting to Deriv API...")
         self.ws = websocket.WebSocketApp(
             self.websocket_url,
             on_open=self.on_open,
@@ -87,7 +125,7 @@ class DerivBinaryOptionsBot:
     
     def on_open(self, ws):
         """WebSocket connection opened"""
-        logging.info("WebSocket connection opened")
+        self.notify_log("WebSocket connection opened")
         self.authorize()
     
     def on_message(self, ws, message):
@@ -99,7 +137,7 @@ class DerivBinaryOptionsBot:
             # Handle authorization
             if msg_type == 'authorize' and data.get('authorize'):
                 self.authorized = True
-                logging.info("Successfully authorized with Deriv API")
+                self.notify_log("Successfully authorized with Deriv API", "success")
                 # Start trading immediately instead of getting active symbols
                 self.select_random_market()
                 self.generate_sequence()
@@ -117,31 +155,30 @@ class DerivBinaryOptionsBot:
             elif data.get('error'):
                 error_message = data['error']['message']
                 error_code = data.get('error', {}).get('code', 'unknown')
-                logging.error(f"API Error: {error_message} (Code: {error_code})")
-                logging.error(f"Request that caused error: {json.dumps(data.get('echo_req', {}))}")
+                self.notify_log(f"API Error: {error_message} (Code: {error_code})", "error")
                 
                 # Check if error is insufficient balance
                 if "balance" in error_message.lower() and "insufficient" in error_message.lower():
-                    logging.critical("Insufficient balance. Exiting program.")
+                    self.notify_log("Insufficient balance. Exiting program.", "error")
                     self.ws.close()
                     sys.exit(1)
                 
                 # If market is closed, try the next market
                 if "market is closed" in error_message.lower() or "market" in error_message.lower():
-                    logging.warning(f"Market {self.current_market} is closed. Trying next market.")
+                    self.notify_log(f"Market {self.current_market} is closed. Trying next market.", "warning")
                     self.select_random_market()
                     self.start_trading_sequence()
         
         except Exception as e:
-            logging.error(f"Error processing message: {str(e)}")
+            self.notify_log(f"Error processing message: {str(e)}", "error")
     
     def on_error(self, ws, error):
         """Handle WebSocket errors"""
-        logging.error(f"WebSocket Error: {error}")
+        self.notify_log(f"WebSocket Error: {error}", "error")
     
     def on_close(self, ws, close_status_code, close_msg):
         """Handle WebSocket connection closure"""
-        logging.info(f"WebSocket connection closed: {close_status_code} - {close_msg}")
+        self.notify_log(f"WebSocket connection closed: {close_status_code} - {close_msg}", "warning")
         # Attempt to reconnect after a brief pause
         time.sleep(5)
         self.connect()
@@ -157,22 +194,24 @@ class DerivBinaryOptionsBot:
     def select_random_market(self):
         """Select a random market from active markets"""
         if not self.active_markets:
-            logging.error("No active markets available")
+            self.notify_log("No active markets available", "error")
             sys.exit(1)
         
         self.current_market = random.choice(self.active_markets)
-        logging.info(f"Selected market: {self.current_market}")
+        self.notify_log(f"Selected market: {self.current_market}")
+        self.notify_status_change()
     
     def generate_sequence(self):
         """Generate a random sequence of trades (R/G)"""
         self.sequence = random.choices(['R', 'G'], k=10)
-        logging.info(f"Generated sequence: {''.join(self.sequence)}")
+        self.notify_log(f"Generated sequence: {''.join(self.sequence)}")
         self.current_trade_index = 0
+        self.notify_sequence_change()
     
     def get_current_stake(self):
         """Get the stake for the current loss streak"""
         if self.consecutive_losses >= len(self.stakes):
-            logging.critical(f"Reached maximum consecutive losses ({self.max_consecutive_losses}). Exiting program.")
+            self.notify_log(f"Reached maximum consecutive losses ({self.max_consecutive_losses}). Exiting program.", "error")
             self.ws.close()
             sys.exit(1)
         
@@ -181,7 +220,7 @@ class DerivBinaryOptionsBot:
     def start_trading_sequence(self):
         """Start trading sequence"""
         if not self.authorized or not self.current_market:
-            logging.error("Not authorized or no market selected")
+            self.notify_log("Not authorized or no market selected", "error")
             return
         
         self.is_trading = True
@@ -195,7 +234,7 @@ class DerivBinaryOptionsBot:
             return
         
         if self.current_trade_index >= len(self.sequence):
-            logging.warning("Reached end of sequence. Generating new sequence.")
+            self.notify_log("Reached end of sequence. Generating new sequence.", "warning")
             self.generate_sequence()
         
         # Get the next trade type
@@ -207,16 +246,13 @@ class DerivBinaryOptionsBot:
     def place_trade(self, contract_type):
         """Place a binary options trade"""
         if not self.authorized or not self.current_market:
-            logging.error("Cannot place trade: Not authorized or no market selected")
+            self.notify_log("Cannot place trade: Not authorized or no market selected", "error")
             return
         
         current_stake = self.get_current_stake()
         
         # Log trade details
-        logging.info(f"Placing {contract_type} trade on {self.current_market}")
-        logging.info(f"Round: {self.consecutive_losses + 1}")
-        logging.info(f"Stake: {current_stake}")
-        logging.info(f"Trade index: {self.current_trade_index + 1} of {len(self.sequence)}")
+        self.notify_log(f"Placing {contract_type} trade on {self.current_market} with stake ${current_stake:.2f}")
         
         # Get a new request ID
         req_id = self.get_next_req_id()
@@ -255,7 +291,7 @@ class DerivBinaryOptionsBot:
                 "req_id": req_id,
                 "contract_type": "PUT" if self.sequence[self.current_trade_index] == 'R' else "CALL"
             }
-            logging.info(f"Contract placed successfully. ID: {contract_id}")
+            self.notify_log(f"Contract placed successfully. ID: {contract_id}", "success")
             
             # Subscribe to contract updates
             subscription_req_id = self.get_next_req_id()
@@ -266,7 +302,7 @@ class DerivBinaryOptionsBot:
                 "req_id": subscription_req_id
             }))
         else:
-            logging.error(f"Failed to place contract. Request ID: {req_id}")
+            self.notify_log(f"Failed to place contract. Request ID: {req_id}", "error")
             # Move to the next market if there was an error
             self.select_random_market()
             self.start_trading_sequence()
@@ -293,9 +329,12 @@ class DerivBinaryOptionsBot:
         # Add contract type to contract data for the web interface
         contract_data["contract_type"] = self.active_contract.get("contract_type", "UNKNOWN")
         
+        # Notify observer of trade update
+        self.notify_trade_update(contract_data)
+        
         if status == "won":
             profit = contract_data.get("profit")
-            logging.info(f"Contract won! Profit: {profit}")
+            self.notify_log(f"Contract won! Profit: {profit}", "success")
             
             # Reset for new trading sequence
             self.consecutive_losses = 0
@@ -305,7 +344,7 @@ class DerivBinaryOptionsBot:
             
         elif status == "lost":
             loss = contract_data.get("profit")
-            logging.info(f"Contract lost. Loss: {loss}")
+            self.notify_log(f"Contract lost. Loss: {loss}", "error")
             
             # Increment consecutive losses and trade index
             self.consecutive_losses += 1
@@ -313,18 +352,21 @@ class DerivBinaryOptionsBot:
             
             # Check if we reached the end of the sequence
             if self.current_trade_index >= len(self.sequence):
-                logging.info("Reached end of sequence. Generating new sequence.")
+                self.notify_log("Reached end of sequence. Generating new sequence.")
                 self.generate_sequence()
             
             # Check if we've reached maximum losses
             if self.consecutive_losses >= len(self.stakes):
-                logging.critical(f"Reached maximum consecutive losses ({self.max_consecutive_losses}). Exiting program.")
+                self.notify_log(f"Reached maximum consecutive losses ({self.max_consecutive_losses}). Exiting program.", "error")
                 self.ws.close()
                 sys.exit(1)
             
             # Log information about the next stake
             next_stake = self.stakes[self.consecutive_losses]
-            logging.info(f"Moving to round {self.consecutive_losses + 1} with stake: {next_stake}")
+            self.notify_log(f"Moving to round {self.consecutive_losses + 1} with stake: {next_stake}")
+            
+            # Update status after consecutive losses change
+            self.notify_status_change()
             
             # Place next trade immediately
             self.place_next_trade()
@@ -334,36 +376,30 @@ class DerivBinaryOptionsBot:
     
     def run(self):
         """Main bot loop"""
-        logging.info("Starting Deriv Binary Options Trading Bot")
-        logging.info("Using synthetic indices markets:")
-        for market in self.active_markets:
-            logging.info(f"- {market}")
-        
-        logging.info("Using predefined stakes for each round:")
-        for i, stake in enumerate(self.stakes):
-            logging.info(f"Round {i+1}: ${stake:.2f}")
+        self.notify_log("Starting Deriv Binary Options Trading Bot", "info")
+        self.notify_log("Using synthetic indices markets")
         
         self.connect()
         
         try:
-            # Keep the main thread alive
+            # Keep the thread alive
             while True:
                 time.sleep(1)
                 
         except KeyboardInterrupt:
-            logging.info("Bot stopped by user")
+            self.notify_log("Bot stopped by user")
             if self.ws:
                 self.ws.close()
         except Exception as e:
-            logging.error(f"Unexpected error: {str(e)}")
+            self.notify_log(f"Unexpected error: {str(e)}", "error")
             if self.ws:
                 self.ws.close()
 
+# Only execute if this file is run directly
 if __name__ == "__main__":
-    # Replace with your actual API token and app_id
     API_TOKEN = "8fRRApGnNy0TY6T"  # Your API token
     APP_ID = "1089"  # Your app ID
     
     bot = DerivBinaryOptionsBot(API_TOKEN, APP_ID)
     bot.run()
-
+    

@@ -31,6 +31,11 @@ class BotObserver:
     
     def __init__(self):
         self.last_balance = 100.0  # Default starting balance
+        self.loop = None
+    
+    def set_event_loop(self, loop):
+        """Set the event loop to use for async calls"""
+        self.loop = loop
     
     async def broadcast_message(self, message_data):
         """Send a message to all connected clients"""
@@ -39,7 +44,8 @@ class BotObserver:
             
         message = json.dumps(message_data)
         await asyncio.gather(
-            *[client.send(message) for client in connected_clients]
+            *[client.send(message) for client in connected_clients],
+            return_exceptions=True  # Don't let one failed client crash all sends
         )
     
     async def broadcast_log(self, message, level="info"):
@@ -75,6 +81,10 @@ class BotObserver:
     
     async def broadcast_trade(self, contract_data):
         """Broadcast trade result to all clients"""
+        global bot
+        if not bot:
+            return
+            
         await self.broadcast_message({
             "type": "trade_update",
             "market": bot.current_market,
@@ -95,75 +105,23 @@ class BotObserver:
             "change": profit,
             "timestamp": datetime.now().isoformat()
         })
-
-# Create a modified version of your bot class to handle websocket notifications
-class WebsocketDerivBot(DerivBinaryOptionsBot):
-    """Modified bot class to send updates to websocket clients"""
     
-    def __init__(self, api_token, app_id, observer):
-        super().__init__(api_token, app_id)
-        self.observer = observer
-        
-    async def notify_status_change(self):
-        """Notify clients about bot status changes"""
-        await self.observer.broadcast_status(self)
+    # Callback functions for the bot
+    def status_change_callback(self, bot):
+        if self.loop:
+            asyncio.run_coroutine_threadsafe(self.broadcast_status(bot), self.loop)
     
-    async def notify_sequence_change(self):
-        """Notify clients about sequence changes"""
-        await self.observer.broadcast_sequence(self)
+    def sequence_change_callback(self, bot):
+        if self.loop:
+            asyncio.run_coroutine_threadsafe(self.broadcast_sequence(bot), self.loop)
     
-    async def notify_log(self, message, level="info"):
-        """Send log message to clients"""
-        await self.observer.broadcast_log(message, level)
+    def log_callback(self, message, level="info"):
+        if self.loop:
+            asyncio.run_coroutine_threadsafe(self.broadcast_log(message, level), self.loop)
     
-    # Override methods that need to notify the web interface
-    
-    def authorize(self):
-        """Override to notify when authorization happens"""
-        super().authorize()
-        asyncio.run(self.notify_log("Authorizing with Deriv API..."))
-    
-    def select_random_market(self):
-        """Override to notify when market selection happens"""
-        super().select_random_market()
-        asyncio.run(self.notify_log(f"Selected market: {self.current_market}"))
-        asyncio.run(self.notify_status_change())
-    
-    def generate_sequence(self):
-        """Override to notify when sequence is generated"""
-        super().generate_sequence()
-        asyncio.run(self.notify_log(f"Generated sequence: {''.join(self.sequence)}"))
-        asyncio.run(self.notify_sequence_change())
-    
-    def place_trade(self, contract_type):
-        """Override to notify when trade is placed"""
-        super().place_trade(contract_type)
-        asyncio.run(self.notify_log(
-            f"Placing {contract_type} trade on {self.current_market} with stake ${self.get_current_stake():.2f}"))
-    
-    def handle_contract_update(self, contract_data):
-        """Override to notify when contract is updated"""
-        # Store original status for notification purposes
-        original_consecutive_losses = self.consecutive_losses
-        
-        # Call the original method
-        super().handle_contract_update(contract_data)
-        
-        # If contract is settled, notify clients
-        status = contract_data.get("status")
-        if status in ["won", "lost"] and contract_data.get("contract_id") == getattr(self.active_contract, "contract_id", None):
-            asyncio.run(self.observer.broadcast_trade(contract_data))
-            
-            profit_text = contract_data.get("profit", "0")
-            log_level = "success" if status == "won" else "error"
-            asyncio.run(self.notify_log(
-                f"Contract {status.upper()}! Profit: {profit_text}", log_level))
-            
-            # If consecutive losses changed, notify status
-            if original_consecutive_losses != self.consecutive_losses:
-                asyncio.run(self.notify_status_change())
-            
-            # If sequence is regenerated, it will call the overridden method
+    def trade_update_callback(self, contract_data):
+        if self.loop:
+            asyncio.run_coroutine_threadsafe(self.broadcast_trade(contract_data), self.loop)
 
 # WebSocket server handler
 async def handler(websocket, path):
@@ -186,28 +144,43 @@ async def handler(websocket, path):
         
         # Keep the connection alive
         while True:
-            message = await websocket.recv()
-            # Handle any commands from the web UI here
-            # For now, we're just echoing back
-            data = json.loads(message)
-            await websocket.send(json.dumps({
-                "type": "echo",
-                "data": data
-            }))
+            try:
+                message = await asyncio.wait_for(websocket.recv(), timeout=30)
+                # Handle any commands from the web UI here
+                data = json.loads(message)
+                await websocket.send(json.dumps({
+                    "type": "echo",
+                    "data": data
+                }))
+            except asyncio.TimeoutError:
+                # Send a ping to keep connection alive
+                try:
+                    pong_waiter = await websocket.ping()
+                    await asyncio.wait_for(pong_waiter, timeout=10)
+                except (asyncio.TimeoutError, websockets.exceptions.ConnectionClosed):
+                    # No response to ping, connection probably dead
+                    break
     
     except websockets.exceptions.ConnectionClosed:
         logging.info(f"Client disconnected: {client_ip}")
+    except Exception as e:
+        logging.error(f"Error in WebSocket handler: {str(e)}")
     finally:
         # Unregister client
-        connected_clients.remove(websocket)
+        if websocket in connected_clients:
+            connected_clients.remove(websocket)
 
 # Function to run the bot in a separate thread
-def run_bot(api_token, app_id, observer):
+def run_bot(api_token, app_id, observer_callbacks):
     """Run the trading bot in a separate thread"""
     global bot
     
-    bot = WebsocketDerivBot(api_token, app_id, observer)
-    bot.run()
+    try:
+        bot = DerivBinaryOptionsBot(api_token, app_id)
+        bot.set_observer_callbacks(observer_callbacks)
+        bot.run()
+    except Exception as e:
+        logging.error(f"Bot thread error: {str(e)}")
 
 # Main function to start the server
 async def main():
@@ -217,28 +190,42 @@ async def main():
     # Create observer
     observer = BotObserver()
     
+    # Set event loop for callbacks
+    observer.set_event_loop(asyncio.get_event_loop())
+    
+    # Define observer callbacks
+    observer_callbacks = {
+        'status_change': observer.status_change_callback,
+        'sequence_change': observer.sequence_change_callback,
+        'log': observer.log_callback,
+        'trade_update': observer.trade_update_callback
+    }
+    
     # Start WebSocket server
     server_host = 'localhost'
     server_port = 8765
     
     logging.info(f"Starting WebSocket server on {server_host}:{server_port}")
     
+    # Start the server with ping_interval and ping_timeout
     server = await websockets.serve(
-        handler, server_host, server_port
+        handler, server_host, server_port,
+        ping_interval=20,
+        ping_timeout=30,
+        max_size=10485760  # 10MB max message size
     )
     
     logging.info("WebSocket server started")
-    await observer.broadcast_log("WebSocket server started", "info")
     
     # Start bot in separate thread
-    API_TOKEN = "8fRRApGnNy0TY6T"  # Your API token
+    API_TOKEN = "YOUR_ACTUAL_API_TOKEN_HERE"  # Replace with a valid API token
     APP_ID = "1089"  # Your app ID
     
     logging.info("Starting trading bot")
     
     bot_thread = threading.Thread(
         target=run_bot,
-        args=(API_TOKEN, APP_ID, observer)
+        args=(API_TOKEN, APP_ID, observer_callbacks)
     )
     bot_thread.daemon = True
     bot_thread.start()
